@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
+from urllib.parse import urlparse, urljoin
 from flask import (Flask, redirect, url_for, abort,
                    make_response, jsonify, request,
-                   session)
+                   session, g)
 
 
 app = Flask(__name__)
@@ -44,8 +45,8 @@ def not_found():
     abort(404)
 
 
-@app.route('/foo')
-def foo():
+@app.route('/foobar')
+def foobar():
     response = make_response('Hello World')
     response.mimetype = 'text/plain'
     return response
@@ -130,3 +131,42 @@ def logout():
     if 'logged_in' in session:
         session.pop('logged_in')
     return redirect(url_for('hello'))
+
+
+# g存储在程序上下文中，每次请求都会重设这个值，随着每一个请求完毕而销毁
+@app.before_request
+def get_name():
+    g.name = request.args.get('name')
+
+
+# 重定向到上一个页面
+@app.route('/foo')
+def foo():
+    return '<h1>Foo page</h1><a href="%s">Do something and redirect</a>' \
+           % url_for('do_something', next=request.full_path)
+
+
+@app.route('/bar')
+def bar():
+    return '<h1>Bar page</h1><a href="%s">Do something and redirect</a>' \
+           % url_for('do_something', next=request.full_path)
+
+
+@app.route('/do_something')
+def do_something():
+    return redirect_back()
+
+
+def redirect_back(default='hello', **kwargs):
+    for target in request.args.get('next'), request.referrer:
+        if not target:
+            continue
+        if is_safe_url(target):
+            return redirect(target)
+    return redirect(url_for(default, **kwargs))
+
+
+def is_safe_url(target):
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
